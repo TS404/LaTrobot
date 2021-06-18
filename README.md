@@ -7,7 +7,8 @@ Uses and SQL query of La Trobe Uni's databases to collate non-sensitive data tha
 For current and past academic staff (and published students with ORCIDs):
 -	Department affiliation, Position, Employment dates
 -	Fields of expertise (as semantic concepts, not plaintext)
--	Links to LTU website address, ORCID, SCOPUSID, ResearchID
+-	LTU academic profile website address
+-	User-declared links for ORCID, SCOPUSID, ResearchID
 -	References to support for the above (typically ltu profile page as appropriate)
 
 ## Process
