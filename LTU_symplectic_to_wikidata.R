@@ -6,20 +6,23 @@ library(rorcid)
 library(tibble)
 library(progress)
 library(dplyr)
+library(readr)
 library(readxl)
 library(pbapply)
 library(stringr)
 library(crayon)
 
-sum((!is.na(datafull$ScopusID) |
-     !is.na(datafull$ORCID) |
-     grepl("PROF",datafull$Classification) |
-     grepl("LEC",datafull$Classification) |
-     grepl("RES",datafull$Classification) |
-     grepl("FELL",datafull$Classification) |
-     grepl("AP",datafull$Classification) |
-     grepl("ADJ",datafull$Classification)
-    ),na.rm = 1)
+researchers <- (!is.na(datafull$ScopusID) |
+                !is.na(datafull$ORCID) |
+                grepl("PROF",datafull$Classification) |
+                grepl("LEC",datafull$Classification) |
+                grepl("RES",datafull$Classification) |
+                grepl("FELL",datafull$Classification) |
+                grepl("AP",datafull$Classification) |
+                grepl("ADJ",datafull$Classification))
+message(round(sum(!is.na(datafull$ORCID[researchers]))/sum(researchers)*100,1),"% ORCIDS\n",
+        round(sum(!is.na(datafull$ScopusID[researchers]))/sum(researchers)*100,1),"% ScopusID\n",
+        round(sum(!is.na(datafull$ResearcherID[researchers]))/sum(researchers)*100,1),"% ResearcherID")
 
 list <- list(alice=list(apple="Q1",avocado="Q2"),
              bob = list(banana="Q3", beetroot="STOP"),
@@ -28,13 +31,13 @@ list <- list(alice=list(apple="Q1",avocado="Q2"),
 # Metafunctions -----------------
 
 #Reverse names in format surname comma firstname
-reverse_names <- function(names        = NULL,
-                          correct_case = TRUE,
-                          rm_middle    = FALSE,
-                          rm_middle_i  = FALSE){
+reverse_names <- function(names          = NULL,
+                          correct_case   = TRUE,
+                          rm_middle      = FALSE,
+                          rm_middle_init = FALSE){
   lastnames  <- gsub(pattern = "(.*), (.*)",replacement = "\\1",names)
   firstnames <- gsub(pattern = "(.*), (.*)",replacement = "\\2",names)
-  if(any(rm_middle,rm_middle_i)){
+  if(any(rm_middle,rm_middle_init)){
     firstnames <- gsub(pattern = "\\.",replacement = "",firstnames)
     firstnames.s <- str_split(firstnames," ")
     firstnames.s <- lapply(firstnames.s,function(x){x[str_length(x)>1]})
@@ -50,6 +53,22 @@ reverse_names <- function(names        = NULL,
     names <- str_to_title(names)
   }
   return(names)
+}
+
+split_names <- function(names           = NULL,
+                        rm_middle       = TRUE){
+  torev <- grepl(",",names)
+  names[torev] <- reverse_names(names[torev])
+  names.split <- str_split(names," ")
+
+  if(rm_middle){
+    firstnames <- sapply(names.split,function(x){x[1]})
+    lastnames  <- sapply(names.split,function(x){x[length(x)]})
+    return(tibble(firstnames=firstnames,
+                  lastnames=lastnames))
+  }else{
+    return(names.split)
+  }
 }
 
 disambiguate_QIDs <- function(list,
@@ -822,6 +841,7 @@ positionoptions.qid <- cbind(position=positionoptions,
 
 # Analysis -----
 data <- ORCiDs_from_names(data)
+# scholar_from_names(data) # ... get_scholar_id(last_name = "", first_name = "", affiliation = "La Trobe")
 data <- disambiguate_ORCiDs(data)
 data <- ORCiD_pub_number(data)
 data <- QIDs_from_ORCiDs(data)
@@ -890,14 +910,13 @@ write_wikidata(items           = expertise.items,
                format          = "website"
 )
 
-
 write_wikidata(items        = c("Q4115189","Q13406268"),
                properties   = "P108",
                values       = "Q1478723",
                qual.properties = data.frame(c("P580","P580"),c("P582","P582")),
                qual.values  = data.frame(sapply(data[1:2,c('Arrive Date','Leave Date')],
                                                 function(x) if(x[[1]]!=as.POSIXlt("9999-12-31 00:00:00",'UTC')){
-                                                  paste0("+", x, "T00:00:00Z/9")
+                                                  paste0("+", x, "T00:00:00Z/11")
                                                   }else{
                                                     ""
                                                   })),

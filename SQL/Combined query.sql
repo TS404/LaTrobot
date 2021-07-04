@@ -1,4 +1,5 @@
-  
+# Combines data from UserData_query.sql and UsersExpertise_query.sql
+
 SELECT DISTINCT
     UD.*,
     U.[Arrive Date],
