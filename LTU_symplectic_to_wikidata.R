@@ -830,6 +830,7 @@ disambiguate_expertise <- function(data,limit=10){
 
 
 # Data load -----
+# Note: "2021.06.01_UserData_Thomas.xlsx" is the result of "SQL_qery.sql"
 datafull <- read_excel("2021.06.01_UserData_Thomas.xlsx")
 datafull$`Leave Date`[datafull$`Leave Date`==as.POSIXct("9999-12-31","UTC")]<-NA
 saveRDS(datafull,"LTU_all.RDS")
