@@ -60,10 +60,7 @@ build_positiontable <- function(data){
   return(positiontable)
 }
 
-
-
-
-ORCiDs_from_names <- function(data = data){
+ORCID_from_names <- function(data = data){
   ORCIDs_certain <- sum(!is.na(data$ORCID))/nrow(data)
   message("Finding additional ORCiDs based on names and affiliations")
   data$ORCID_estimate<-NA
@@ -71,8 +68,8 @@ ORCiDs_from_names <- function(data = data){
                          format = "[:bar] :percent eta::eta")
   for (i in which(data$College!="Central" & is.na(data$ORCID))){
     pb$tick()
-    ORCID.guess <- orcid_search (given_name  = gsub(pattern = ".*, ([^ ]*).*",replacement = "\\1 ",data$name[i]),
-                                 family_name = gsub(pattern = "([^ ]*),.*",replacement = "\\1 ",data$name[i]),
+    ORCID.guess <- orcid_search (given_name  = gsub(pattern = ".*, ([^ ]*).*",replacement = "\\1 ",data$Name[i]),
+                                 family_name = gsub(pattern = "([^ ]*),.*",replacement = "\\1 ",data$Name[i]),
                                  current_inst = 'Trobe')
     if(length(ORCID.guess)==0){
       ORCID.guess<-NA
@@ -83,9 +80,37 @@ ORCiDs_from_names <- function(data = data){
   }
   ORCIDs_certain <- sum(!is.na(data$ORCID))/nrow(data)
   ORCIDs_estimate <- (sum(!is.na(data$ORCID_estimate))+sum(!is.na(data$ORCID)))/nrow(data) - ORCIDs_certain
-  message(100*round(ORCIDs_certain,3),"% of the ",nrow(data)," rows have an ORCiD. I've found ORCiDs for an additional ",
+  message(100*round(ORCIDs_certain,3),"% of the ",nrow(data)," rows had an ORCiD. I've found ORCiDs for an additional ",
           100*round(ORCIDs_estimate,3),"% based on name and affiliation, leaving ",
           100*round(1-ORCIDs_certain-ORCIDs_estimate,3),"% unaccounted for.")
+  return(data)
+}
+
+scholar_from_names <- function(data = data){
+  if(suppressWarnings(is.null(data$gsc))){data$gsc <- NA}
+  gsc_certain <- sum(!is.na(data$gsc))/nrow(data)
+  message("Finding additional Google Scholar profiles based on names and affiliations")
+  data$gsc_estimate<-NA
+  pb <- progress_bar$new(total = sum(data$College!="Central" & is.na(data$gsc), na.rm = 1),
+                         format = "[:bar] :percent eta::eta")
+  for (i in which(data$College!="Central" & is.na(data$gsc))){
+    pb$tick()
+    gsc.guess <-   suppressMessages(get_scholar_id(last_name = trimws(gsub(pattern = "([^ ]*),.*",replacement = "\\1 ",data$Name[i])),
+                                                   first_name = trimws(gsub(pattern = ".*, ([^ ]*).*",replacement = "\\1 ",data$Name[i])),
+                                                   affiliation = "Trobe"))
+
+    if(length(gsc.guess)==0){
+      gsc.guess<-NA
+    }else if(length(gsc.guess)>1){
+      gsc.guess<-tibble(gsc_estimates=gsc.guess$gsc)
+    }
+    data$gsc_estimate[i] <- gsc.guess
+  }
+  gsc_certain <- sum(!is.na(data$gsc))/nrow(data)
+  gsc_estimate <- (sum(!is.na(data$gsc_estimate))+sum(!is.na(data$gsc)))/nrow(data) - gsc_certain
+  message(100*round(gsc_certain,3),"% of the ",nrow(data)," rows had a GSc profile I've found ORCiDs for an additional ",
+          100*round(gsc_estimate,3),"% based on name and affiliation, leaving ",
+          100*round(1-gsc_certain - gsc_estimate,3),"% unaccounted for.")
   return(data)
 }
 
@@ -384,6 +409,7 @@ capwords <- function(s, strict = FALSE) {
 }
 
 # > expertise and keywords -----
+#pull keywords from ORCID and Gscholar based on wikidata item
 prep_keywords <- function(QID){
   out <- NULL
   pb <- progress_bar$new(total = length(QID),
@@ -412,38 +438,38 @@ prep_keywords <- function(QID){
 }
 
 # Identify QIDs for fields (where possible)
-global_disambiguate <- function(tibble){
-  key.all         <- sort(unique(unlist(tibble)))
-  key.all.qid     <- disambiguate_QIDs(key.all,variablename = "keyword")
-  renames         <- sapply(key.all.qid,function(x){if(!is.null(names(x))){names(x)}else{NA}})
-  renames[renames==key.all] <- NA
-  key.all.qid.tib <- tibble(QID=unlist(key.all.qid),
-                            stated.as=key.all,
-                            renames=renames)
-  out <- rapply(tibble,function(x){key.all.qid[x]},how="replace")
-  colnames(out) <- paste0(gsub(".*?\\$([$]*)","",colnames(tibble)),".qid")
-  return(out)
-}
-
-local_disambiguate <- function(keyqidcolumn,namecolumn){
-  ambiguous <- rapply(keyqidcolumn[[1]],function(x){if(is.na(x)){names(x)}},how = "replace")
-  ambiguous <- lapply(ambiguous,function(x){Filter(Negate(is.null), x)})
-  names(ambiguous) <- sapply(keyqidcolumn[[1]],function(x){if(!is.null(x)){if(length(x)!=0){paste(names(x),collapse = ", ")}}})
-  output <- NULL
-  for (i in 1:length(keyqidcolumn[[1]])){
-    if (length(ambiguous[i][[1]])!=0){
-      disambiguated <- disambiguate_QIDs(ambiguous[i][!(sapply(ambiguous[i],is.null))],variablename = paste0("ambiguous item in ",white(namecolumn[i]),"'s list"))[[1]]
-      working <- unlist(keyqidcolumn[[1]][[i]])
-      working[sapply(working,is.na)]<-disambiguated
-      output[[i]] <- unlist(working)
-    }else{
-      output[[i]] <- unlist(keyqidcolumn[[1]][[i]])
-    }
-  }
-  return(output)
-}
-
 global_local_disambiguate <- function(tibble,names){
+
+  global_disambiguate <- function(tibble){
+    key.all         <- sort(unique(unlist(tibble)))
+    key.all.qid     <- disambiguate_QIDs(key.all,variablename = "keyword")
+    renames         <- sapply(key.all.qid,function(x){if(!is.null(names(x))){names(x)}else{NA}})
+    renames[renames==key.all] <- NA
+    key.all.qid.tib <- tibble(QID=unlist(key.all.qid),
+                              stated.as=key.all,
+                              renames=renames)
+    out <- rapply(tibble,function(x){key.all.qid[x]},how="replace")
+    colnames(out) <- paste0(gsub(".*?\\$([$]*)","",colnames(tibble)),".qid")
+    return(out)
+  }
+  local_disambiguate <- function(keyqidcolumn,namecolumn){
+    ambiguous <- rapply(keyqidcolumn[[1]],function(x){if(is.na(x)){names(x)}},how = "replace")
+    ambiguous <- lapply(ambiguous,function(x){Filter(Negate(is.null), x)})
+    names(ambiguous) <- sapply(keyqidcolumn[[1]],function(x){if(!is.null(x)){if(length(x)!=0){paste(names(x),collapse = ", ")}}})
+    output <- NULL
+    for (i in 1:length(keyqidcolumn[[1]])){
+      if (length(ambiguous[i][[1]])!=0){
+        disambiguated <- disambiguate_QIDs(ambiguous[i][!(sapply(ambiguous[i],is.null))],variablename = paste0("ambiguous item in ",white(namecolumn[i]),"'s list"))[[1]]
+        working <- unlist(keyqidcolumn[[1]][[i]])
+        working[sapply(working,is.na)]<-disambiguated
+        output[[i]] <- unlist(working)
+      }else{
+        output[[i]] <- unlist(keyqidcolumn[[1]][[i]])
+      }
+    }
+    return(output)
+  }
+  
   out <- global_disambiguate(tibble)
   for(i in 1:ncol(out)){
     working <- local_disambiguate(out[,i],names)
@@ -476,6 +502,10 @@ datafull$Affiliation[researchers & datafull$School!="Other"] <- paste0(str_repla
                                                                        sapply(datafull$School,function(x) if(is.na(x)){""}else{paste(",",x)}))[researchers & datafull$School!="Other"]
 datafull$Expertise_split <- str_split(datafull$Expertise,"; *")
 datafull$Expertise_split[is.na(datafull$Expertise_split)] <- list(rep(NULL,length(is.na(datafull$Expertise_split))))
+
+#users requesting omission
+omission.ids <- c(15564,9934,15569,17743,5575,6663,12982,16024,10532,16327,7468,10973,12910,527,15574,15566,13232)
+datafull <- datafull[!datafull$`User ID` %in% omission.ids,]
 saveRDS(datafull,paste0("C:\\Users\\thoma\\OneDrive\\1-Scripts\\GitHub\\wikiR test scripts\\LTU_all_",format(Sys.time(), "%Y-%m-%d"),".RDS"))
 
 retrieval.date <- "2021-12-09"
@@ -507,9 +537,9 @@ message(round(sum(!is.na(datafull$ORCID[researchers]))/sum(researchers)*100,1),"
         round(sum(!is.na(datafull$ScopusID[researchers]))/sum(researchers)*100,1),"% ScopusID\n",
         round(sum(!is.na(datafull$ResearcherID[researchers]))/sum(researchers)*100,1),"% ResearcherID")
 
-data <- head(datafull[researchers,],100)
+data <- datafull[researchers,][101:5719]
 data <- ORCiDs_from_names(data)
-# scholar_from_names(data) # ... get_scholar_id(last_name = "", first_name = "", affiliation = "La Trobe")
+data <- scholar_from_names(data)
 data <- disambiguate_ORCiDs(data)
 data <- ORCiD_pub_number(data)
 data <- QIDs_from_ORCiDs(data)
@@ -528,18 +558,15 @@ saveRDS(data,paste0("C:\\Users\\thoma\\OneDrive\\1-Scripts\\GitHub\\wikiR test s
 
 # > Disambiguate expertise ------
 # supplement from gscholar and orcid
-QID      <- data$QID
-keywords <- bind_cols(prep_keywords(QID),
+keywords <- bind_cols(prep_keywords(data$QID),
                       data$Expertise_split)
 temp<- unlist(lapply(keywords$key.orc,length))
 temp[temp==0]<-NA
 hist(temp,main = "number of orcid expertise listed",breaks = max(temp,na.rm = 1),xlim = c(0,1+max(temp,na.rm = 1)))
+
 keyword.qids <- bind_cols(keywords$name,
                           global_local_disambiguate(tibble(keywords$key.orc,keywords$key.gsc),
                                                     keywords$name))
-
-keyword.qids <- bind_cols(keyword.qids,
-                          global_local_disambiguate(tibble(data$Expertise_split),data$Name))
 
 statedas <- c(unlist(keywords$key.orc),
               unlist(keywords$key.gsc),
