@@ -480,7 +480,7 @@ global_local_disambiguate <- function(tibble,names){
   return(out)
 }
 
-# Data load -----
+# Full data load -----
 # Note: "2021.06.01_UserData_Thomas.xlsx" is the result of "SQL_qery.sql"
 datafull <- read_excel("C:/Users/thoma/OneDrive/1-Scripts/GitHub/wikiR test scripts/2021.06.01_UserData_Thomas.xlsx")
 datafull$`Leave Date`[datafull$`Leave Date`==as.POSIXct("9999-12-31","UTC")]<-NA
@@ -510,7 +510,7 @@ saveRDS(datafull,paste0("C:\\Users\\thoma\\OneDrive\\1-Scripts\\GitHub\\wikiR te
 
 retrieval.date <- "2021-12-09"
 
-# > Disambiguate positions ------
+# > positions ------
 # First get options for position titles (Those with ORCIDs and in either SHE or ASSC)
 positionoptions     <- names(sort(table(datafull[researchers,]$Position[datafull[researchers,]$College!="Central" & !is.na(datafull[researchers,]$ORCID)]),decreasing = TRUE))
 positionoptions.qid <- disambiguate_QIDs(positionoptions)
@@ -532,31 +532,46 @@ datafull$positionoptions.qid <- positionoptions.qid[datafull$Position,2]
 # where positionqid is NULL, fall back on classqid
 datafull$position.or.class.qid <- datafull$positionoptions.qid
 datafull$position.or.class.qid[as.character(datafull$positionoptions.qid)=="NULL"] <- datafull$classoptions.qid[as.character(datafull$positionoptions.qid)=="NULL"]
-# Main Analysis Pipeline -----
+
+# Data Analysis Pipeline -----
 message(round(sum(!is.na(datafull$ORCID[researchers]))/sum(researchers)*100,1),"% ORCIDS\n",
         round(sum(!is.na(datafull$ScopusID[researchers]))/sum(researchers)*100,1),"% ScopusID\n",
         round(sum(!is.na(datafull$ResearcherID[researchers]))/sum(researchers)*100,1),"% ResearcherID")
 
-data <- datafull[researchers,][101:5719]
+data <- datafull[researchers,][101:5719,]
 data <- ORCiDs_from_names(data)
 data <- scholar_from_names(data)
+
+# stepwise <- NULL
+for (i in seq(36, nrow(data), 5)){
+  stepwise <- bind_rows(stepwise,
+                        scholar_from_names(data[i:(i+4),]))
+  Sys.sleep(2400)
+}
+
 data <- disambiguate_ORCiDs(data)
 data <- ORCiD_pub_number(data)
 data <- QIDs_from_ORCiDs(data)
 data <- QIDs_from_ScopusIDs(data)
 data <- QIDs_from_ResearcherIDs(data)
-data$QID[!is.qid(data$QID)] <- disambiguate_QIDs(data$Name_noinit[!is.qid(data$QID)],
-                                                 variablename = "identity",
-                                                 variableinfo = paste0(data$Position[!is.qid(data$QID)]," (",
-                                                                       data$`Arrive Date`[!is.qid(data$QID)]," to ",
-                                                                       data$`Leave Date`[!is.qid(data$QID)],") ",
-                                                                       data$Expertise[!is.qid(data$QID)],":\n",
-                                                                       str_trunc(data$Overview[!is.qid(data$QID)],200))
+
+set_to_check <- !(is.qid(data$QID))
+set_to_check <- !(is.qid(data$QID)|is.create(data$QID))
+data$QID[set_to_check] <- disambiguate_QIDs(data$Name_noinit[set_to_check],
+                                            variablename = "identity",
+                                            variableinfo = paste0(data$Position[set_to_check]," ",
+                                                                  data$Department[set_to_check]," (",
+                                                                  data$`Arrive Date`[set_to_check]," to ",
+                                                                  data$`Leave Date`[set_to_check],") ",
+                                                                  data$Expertise[set_to_check],":\n",
+                                                                  str_trunc(data$Overview[set_to_check],200)),
+                                            Q_min = 110173000,
+                                            limit=100
 )
 
 saveRDS(data,paste0("C:\\Users\\thoma\\OneDrive\\1-Scripts\\GitHub\\wikiR test scripts\\LTU_prepared_",format(Sys.time(), "%Y-%m-%d"),".RDS"))
 
-# > Disambiguate expertise ------
+# > expertise ------
 # supplement from gscholar and orcid
 keywords <- bind_cols(prep_keywords(data$QID),
                       data$Expertise_split)
@@ -654,7 +669,8 @@ reference.values        <- data.frame(rep("Q109699444",length(rows)),
                                       rep("https://github.com/TS404/LaTrobot",length(rows)))
 
 # Prepping to create on Wikidata --------
-tocreate        <- which(data$QID=="CREATE")
+tocreate        <- which(data$QID=="CREATE")[1:100]
+sum(data$QID=="CREATE")
 tocreate.names  <- data$Name_noinit[tocreate]
 tocreate.alias  <- data$Name_forward[tocreate]
 tocreate.alias[tocreate.alias==tocreate.names] <- NA
@@ -662,8 +678,8 @@ tocreate.desc   <- paste0("researcher (",casefold(data$Department),")")[tocreate
 tocreate.orcid  <- data$ORCID[tocreate]
 tocreate.scopus <- data$ScopusID[tocreate]
 tocreate.resid  <- data$ResearcherID[tocreate]
-create.properties <- rep(c("Len","Den","Aen","P496","P1153","P1053"),length(tocreate))
-create.values     <- c(rbind(tocreate.names,tocreate.desc,tocreate.alias,tocreate.orcid,tocreate.scopus,tocreate.resid))
+create.properties <- rep(c("Len","Den","Aen","P31","P496","P1153","P1053"),length(tocreate))
+create.values     <- c(rbind(tocreate.names,tocreate.desc,tocreate.alias,"Q5",tocreate.orcid,tocreate.scopus,tocreate.resid))
 create.items      <- rep(c("CREATE",rep("LAST",length(create.properties)/length(tocreate))),length(tocreate))
 
 # Writing to Wikidata! --------
