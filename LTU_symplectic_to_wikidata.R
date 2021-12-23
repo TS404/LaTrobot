@@ -555,8 +555,8 @@ data <- QIDs_from_ORCiDs(data)
 data <- QIDs_from_ScopusIDs(data)
 data <- QIDs_from_ResearcherIDs(data)
 
-set_to_check <- !(is.qid(data$QID))
-set_to_check <- !(is.qid(data$QID)|is.create(data$QID))
+set_to_check <- !(is.qid(data$QID))                     # variant version to find items just created
+set_to_check <- !(is.qid(data$QID)|is.create(data$QID)) # standard version
 data$QID[set_to_check] <- disambiguate_QIDs(data$Name_noinit[set_to_check],
                                             variablename = "identity",
                                             variableinfo = paste0(data$Position[set_to_check]," ",
@@ -669,8 +669,8 @@ reference.values        <- data.frame(rep("Q109699444",length(rows)),
                                       rep("https://github.com/TS404/LaTrobot",length(rows)))
 
 # Prepping to create on Wikidata --------
-tocreate        <- which(data$QID=="CREATE")[1:100]
-sum(data$QID=="CREATE")
+tocreate        <- which(data$QID=="CREATE")#[1:100]
+sum(data$QID=="CREATE",na.rm = TRUE)
 tocreate.names  <- data$Name_noinit[tocreate]
 tocreate.alias  <- data$Name_forward[tocreate]
 tocreate.alias[tocreate.alias==tocreate.names] <- NA
