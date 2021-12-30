@@ -609,23 +609,25 @@ expertise <- expertise[!is.na(expertise$keyword.qid),]
 
 # Prepping to write to Wikidata --------
 
-rows                    <- 1:100
+rows                    <- 1:5619
 items                   <- data$QID[rows]
 
 label                   <- data$Name_noinit[rows]
 description             <- data$Description[rows]
 alias                   <- data$Name_forward[rows]
 
-emp                     <- !(data$Classification=="HDRSTUDT"|data$Position=="Graduate Researcher")
-stu                     <-  (data$Classification=="HDRSTUDT"|data$Position=="Graduate Researcher")
+emp                     <- !(data$Classification[rows]=="HDRSTUDT"|data$Position[rows]=="Graduate Researcher")
+emp[is.na(emp)]         <- FALSE
+stu                     <-  (data$Classification[rows]=="HDRSTUDT"|data$Position[rows]=="Graduate Researcher")
+stu[is.na(stu)]         <- FALSE
 emp.properties          <- "P108"
 emp.values              <- "Q1478723"
 emp.qual.properties     <- data.frame(rep("P6424",length(rows)),
                                       rep("P39",  length(rows)),
                                       rep("P580", length(rows)),
                                       rep("P582", length(rows)))[emp,]
-emp.qual.values         <- data.frame(cbind(data$Affiliation,
-                                            data$position.or.class.qid,
+emp.qual.values         <- data.frame(cbind(data$Affiliation[rows],
+                                            data$position.or.class.qid[rows],
                                             sapply(data$`Arrive Date`[rows],function(x) paste0("+", x, "T00:00:00Z%2F9")),
                                             sapply(data$`Leave Date`[rows],function(x) if(is.na(x)){""}else{paste0("+", x, "T00:00:00Z%2F9")})))[emp,]
 emp.qual.values$X2 <- as.character(emp.qual.values$X2)
@@ -642,7 +644,7 @@ stu.qual.values         <- data.frame(cbind(rep("Q752297",length(rows)),
                                             sapply(data$`Arrive Date`[rows],function(x) paste0("+", x, "T00:00:00Z%2F9")),
                                             sapply(data$`Leave Date`[rows],function(x) if(is.na(x)){""}else{paste0("+", x, "T00:00:00Z%2F9")})))[stu,]
 
-website.properties      <- "P856"
+website.properties      <- rep("P856",length(rows))
 recent                  <- data$`Leave Date`[rows] >= as.POSIXct("2020-01-01")
 recent[is.na(recent)]   <- TRUE
 website.values          <- rep(NA,length(rows))
@@ -657,7 +659,7 @@ website.qual.values     <- data.frame(cbind(rep("Q1860",length(rows)),
 id.properties           <- data.frame(rep("P496", length(rows)),
                                       rep("P1153",length(rows)),
                                       rep("P1053",length(rows)))
-id.values               <- data.frame(data$ORCID,data$ScopusID,data$ResearcherID)
+id.values               <- data.frame(data$ORCID[rows],data$ScopusID[rows],data$ResearcherID[rows])
 
 reference.properties    <- data.frame(rep("S248", length(rows)),
                                       rep("S813", length(rows)),
@@ -669,15 +671,15 @@ reference.values        <- data.frame(rep("Q109699444",length(rows)),
                                       rep("https://github.com/TS404/LaTrobot",length(rows)))
 
 # Prepping to create on Wikidata --------
-tocreate        <- which(data$QID=="CREATE")#[1:100]
+tocreate          <- which(data$QID=="CREATE")#[1:100]
 sum(data$QID=="CREATE",na.rm = TRUE)
-tocreate.names  <- data$Name_noinit[tocreate]
-tocreate.alias  <- data$Name_forward[tocreate]
+tocreate.names    <- data$Name_noinit[tocreate]
+tocreate.alias    <- data$Name_forward[tocreate]
 tocreate.alias[tocreate.alias==tocreate.names] <- NA
-tocreate.desc   <- paste0("researcher (",casefold(data$Department),")")[tocreate]
-tocreate.orcid  <- data$ORCID[tocreate]
-tocreate.scopus <- data$ScopusID[tocreate]
-tocreate.resid  <- data$ResearcherID[tocreate]
+tocreate.desc     <- paste0("researcher (",casefold(data$Department),")")[tocreate]
+tocreate.orcid    <- data$ORCID[tocreate]
+tocreate.scopus   <- data$ScopusID[tocreate]
+tocreate.resid    <- data$ResearcherID[tocreate]
 create.properties <- rep(c("Len","Den","Aen","P31","P496","P1153","P1053"),length(tocreate))
 create.values     <- c(rbind(tocreate.names,tocreate.desc,tocreate.alias,"Q5",tocreate.orcid,tocreate.scopus,tocreate.resid))
 create.items      <- rep(c("CREATE",rep("LAST",length(create.properties)/length(tocreate))),length(tocreate))
@@ -691,7 +693,7 @@ write_wikidata(items           = create.items,            # create missing with 
                api.batchname   = "Creation of La Trobe Uni researchers (having ORCID, SCOPUSID or researcherID, or professor/lecturer) via https://github.com/TS404/LaTrobot"
 )
 
-write_wikidata(items           = items[emp],              # employment
+write_wikidata(items           = unlist(items[emp]),              # employment
                properties      = emp.properties,
                values          = emp.values,
                qual.properties = emp.qual.properties,
@@ -701,7 +703,8 @@ write_wikidata(items           = items[emp],              # employment
                format          = "website",
                api.batchname   = "Employment and affiliations of La Trobe Uni researchers (having ORCID, SCOPUSID or researcherID, or professor/lecturer) via https://github.com/TS404/LaTrobot"
 )
-write_wikidata(items           = items[stu],              # education 
+
+write_wikidata(items           = unlist(items[stu]),              # education 
                properties      = stu.properties,
                values          = stu.values,
                qual.properties = stu.qual.properties,
